@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Adaptive Traffic Signal Agent</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #1e293b;
+      --border: #334155;
+      --text: #f1f5f9;
+      --muted: #94a3b8;
+      --green: #22c55e;
+      --orange: #f97316;
+      --red: #ef4444;
+      --yellow: #eab308;
+      --blue: #38bdf8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      padding: 24px;
+    }
+    .container { max-width: 1200px; margin: 0 auto; }
+    header {
+      display: flex; flex-wrap: wrap; justify-content: space-between;
+      align-items: center; gap: 12px; margin-bottom: 24px;
+      border-bottom: 1px solid var(--border); padding-bottom: 16px;
+    }
+    h1 { font-size: 1.6rem; font-weight: 700; }
+    .subtitle { color: var(--muted); font-size: 0.9rem; }
+    .badge {
+      background: rgba(34, 197, 94, 0.15); color: var(--green);
+      border: 1px solid rgba(34, 197, 94, 0.4);
+      padding: 4px 12px; border-radius: 999px; font-size: 0.8rem; font-weight: 600;
+    }
+    .grid-4 {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px; margin-bottom: 24px;
+    }
+    .grid-2 {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(460px, 1fr));
+      gap: 20px; margin-bottom: 24px;
+    }
+    .card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 12px; padding: 20px;
+    }
+    .card h2 { font-size: 1.05rem; margin-bottom: 12px; color: var(--text); }
+    .kpi-label { font-size: 0.8rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+    .kpi-value { font-size: 1.7rem; font-weight: 700; margin: 4px 0; color: var(--green); }
+    .kpi-sub { font-size: 0.82rem; color: var(--muted); }
+    .controls {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px; align-items: end; margin-bottom: 18px;
+    }
+    label { display: block; font-size: 0.82rem; color: var(--muted); margin-bottom: 6px; }
+    input[type="range"], select {
+      width: 100%; accent-color: var(--blue);
+      background: #0f172a; color: var(--text); border: 1px solid var(--border);
+      border-radius: 6px; padding: 6px 8px;
+    }
+    button {
+      background: var(--blue); color: #0f172a; font-weight: 700;
+      border: none; border-radius: 8px; padding: 10px 18px; cursor: pointer;
+      font-size: 0.9rem; transition: opacity 0.15s;
+    }
+    button:hover { opacity: 0.9; }
+    button:disabled { opacity: 0.5; cursor: wait; }
+    .intersection-box {
+      display: flex; flex-wrap: wrap; gap: 24px; align-items: center;
+      justify-content: space-around; padding: 12px 0;
+    }
+    .road-diagram {
+      position: relative; width: 240px; height: 240px;
+      background: #0f172a; border-radius: 12px; border: 1px solid var(--border);
+      overflow: hidden;
+    }
+    .road-ew {
+      position: absolute; top: 85px; left: 0; width: 100%; height: 70px;
+      background: #334155;
+    }
+    .road-ns {
+      position: absolute; left: 85px; top: 0; width: 70px; height: 100%;
+      background: #334155;
+    }
+    .light {
+      position: absolute; width: 18px; height: 18px; border-radius: 50%;
+      border: 2px solid #0f172a; transition: background 0.2s, box-shadow 0.2s;
+    }
+    .light-ew { top: 111px; left: 62px; }
+    .light-ns { top: 62px; left: 111px; }
+    .q-badge {
+      position: absolute; background: rgba(15,23,42,0.9);
+      padding: 3px 8px; border-radius: 6px; font-size: 0.78rem; font-weight: 700;
+      border: 1px solid var(--border);
+    }
+    .q-ew-label { top: 108px; left: 8px; }
+    .q-ns-label { top: 10px; left: 95px; }
+    .sim-stats { flex: 1; min-width: 240px; }
+    .stat-row {
+      display: flex; justify-content: space-between;
+      padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 0.9rem;
+    }
+    .stat-row:last-child { border-bottom: none; }
+    canvas { max-height: 290px; }
+    @media (max-width: 540px) { .grid-2 { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div>
+        <h1>AI-Based Adaptive Traffic Signal Agent</h1>
+        <p class="subtitle">Tabular Q-Learning vs Fixed-Timing (30s/30s) • UCI Metro Interstate I-94 Dataset</p>
+      </div>
+      <span class="badge">Live Interactive Simulator</span>
+    </header>
+
+    <!-- KPI Cards -->
+    <div class="grid-4" id="kpi-cards">
+      <div class="card">
+        <div class="kpi-label">Avg Wait Time Reduction</div>
+        <div class="kpi-value" id="kpi-wait">--</div>
+        <div class="kpi-sub" id="kpi-wait-sub">Loading...</div>
+      </div>
+      <div class="card">
+        <div class="kpi-label">Avg Queue Reduction</div>
+        <div class="kpi-value" id="kpi-queue">--</div>
+        <div class="kpi-sub" id="kpi-queue-sub">Loading...</div>
+      </div>
+      <div class="card">
+        <div class="kpi-label">Peak Hours (7-9 AM, 4-6 PM)</div>
+        <div class="kpi-value" id="kpi-peak">--</div>
+        <div class="kpi-sub" id="kpi-peak-sub">Loading...</div>
+      </div>
+      <div class="card">
+        <div class="kpi-label">Off-Peak Hours</div>
+        <div class="kpi-value" id="kpi-offpeak">--</div>
+        <div class="kpi-sub" id="kpi-offpeak-sub">Loading...</div>
+      </div>
+    </div>
+
+    <!-- Interactive Simulator -->
+    <div class="card" style="margin-bottom: 24px;">
+      <h2>Interactive 1-Hour Intersection Simulator (Powered by Trained Q-Table API)</h2>
+      <div class="controls">
+        <div>
+          <label>Preset Time of Day (I-94 Profile)</label>
+          <select id="preset-select">
+            <option value="8,4900">08:00 AM — Morning Peak (4,900 veh/hr)</option>
+            <option value="17,5600">05:00 PM — Evening Peak (5,600 veh/hr)</option>
+            <option value="13,4400">01:00 PM — Midday (4,400 veh/hr)</option>
+            <option value="2,600">02:00 AM — Night Off-Peak (600 veh/hr)</option>
+          </select>
+        </div>
+        <div>
+          <label>East-West Demand: <strong id="ew-val">4900</strong> veh/hr (I-94 raw)</label>
+          <input type="range" id="ew-slider" min="300" max="7000" step="100" value="4900" />
+        </div>
+        <div>
+          <label>North-South Demand: <strong id="ns-val">1960</strong> veh/hr (40% default)</label>
+          <input type="range" id="ns-slider" min="100" max="4000" step="100" value="1960" />
+        </div>
+        <div>
+          <button id="run-sim-btn">Run 1-Hour Simulation</button>
+        </div>
+      </div>
+
+      <div class="intersection-box">
+        <div class="road-diagram">
+          <div class="road-ew"></div>
+          <div class="road-ns"></div>
+          <div class="light light-ew" id="light-ew"></div>
+          <div class="light light-ns" id="light-ns"></div>
+          <div class="q-badge q-ew-label">EW: <span id="live-q-ew">0</span></div>
+          <div class="q-badge q-ns-label">NS: <span id="live-q-ns">0</span></div>
+        </div>
+        <div class="sim-stats">
+          <div class="stat-row"><span>Simulated Time</span><strong id="sim-time">0 s / 3600 s</strong></div>
+          <div class="stat-row"><span>AI Avg Waiting Time</span><strong id="sim-ai-wait" style="color:var(--green)">--</strong></div>
+          <div class="stat-row"><span>Fixed Avg Waiting Time</span><strong id="sim-fix-wait" style="color:var(--orange)">--</strong></div>
+          <div class="stat-row"><span>AI Max Queue</span><strong id="sim-ai-max">--</strong></div>
+          <div class="stat-row"><span>Fixed Max Queue</span><strong id="sim-fix-max">--</strong></div>
+          <div class="stat-row"><span>Wait Time Improvement</span><strong id="sim-imp" style="color:var(--green)">--</strong></div>
+        </div>
+      </div>
+      <canvas id="liveChart" style="margin-top: 12px;"></canvas>
+    </div>
+
+    <!-- Offline Benchmark Charts -->
+    <div class="grid-2">
+      <div class="card">
+        <h2>24-Hour Sample Day Queue Length (<span id="sample-date">--</span>)</h2>
+        <canvas id="dayChart"></canvas>
+      </div>
+      <div class="card">
+        <h2>Average Waiting Time: Fixed vs AI Agent</h2>
+        <canvas id="waitChart"></canvas>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Q-Learning Training Reward Curve (250 Episodes)</h2>
+      <canvas id="rewardChart"></canvas>
+    </div>
+  </div>
+
+  <script>
+    let modelData = null;
+    let liveChart = null;
+    let animTimer = null;
+
+    async function init() {
+      const res = await fetch('/model_data.json');
+      modelData = await res.json();
+      renderKPIs();
+      renderStaticCharts();
+      runSimulation();
+    }
+
+    function pct(base, ai) {
+      return (((base - ai) / base) * 100).toFixed(1) + '%';
+    }
+
+    function renderKPIs() {
+      const f = modelData.evaluation.fixed;
+      const a = modelData.evaluation.ai;
+      document.getElementById('kpi-wait').textContent = '+' + pct(f.avg_wait_sec, a.avg_wait_sec);
+      document.getElementById('kpi-wait-sub').textContent = `${a.avg_wait_sec}s AI vs ${f.avg_wait_sec}s Fixed`;
+      document.getElementById('kpi-queue').textContent = '+' + pct(f.avg_queue, a.avg_queue);
+      document.getElementById('kpi-queue-sub').textContent = `${a.avg_queue} veh AI vs ${f.avg_queue} veh Fixed`;
+      document.getElementById('kpi-peak').textContent = '+' + pct(f.peak_avg_wait_sec, a.peak_avg_wait_sec);
+      document.getElementById('kpi-peak-sub').textContent = `${a.peak_avg_wait_sec}s AI vs ${f.peak_avg_wait_sec}s Fixed`;
+      document.getElementById('kpi-offpeak').textContent = '+' + pct(f.offpeak_avg_wait_sec, a.offpeak_avg_wait_sec);
+      document.getElementById('kpi-offpeak-sub').textContent = `${a.offpeak_avg_wait_sec}s AI vs ${f.offpeak_avg_wait_sec}s Fixed`;
+    }
+
+    function renderStaticCharts() {
+      const sd = modelData.sample_day;
+      document.getElementById('sample-date').textContent = sd.date;
+
+      new Chart(document.getElementById('dayChart'), {
+        type: 'line',
+        data: {
+          labels: sd.hours.map(h => h + ':00'),
+          datasets: [
+            { label: 'Fixed-Timing', data: sd.fixed_queues, borderColor: '#f97316', tension: 0.25 },
+            { label: 'AI Q-Learning', data: sd.ai_queues, borderColor: '#22c55e', tension: 0.25 }
+          ]
+        },
+        options: { plugins: { legend: { labels: { color: '#f1f5f9' } } }, scales: { x: { ticks: { color: '#94a3b8' } }, y: { ticks: { color: '#94a3b8' } } } }
+      });
+
+      const f = modelData.evaluation.fixed, a = modelData.evaluation.ai;
+      new Chart(document.getElementById('waitChart'), {
+        type: 'bar',
+        data: {
+          labels: ['Overall', 'Peak', 'Off-Peak'],
+          datasets: [
+            { label: 'Fixed-Timing (s)', data: [f.avg_wait_sec, f.peak_avg_wait_sec, f.offpeak_avg_wait_sec], backgroundColor: '#f97316' },
+            { label: 'AI Agent (s)', data: [a.avg_wait_sec, a.peak_avg_wait_sec, a.offpeak_avg_wait_sec], backgroundColor: '#22c55e' }
+          ]
+        },
+        options: { plugins: { legend: { labels: { color: '#f1f5f9' } } }, scales: { x: { ticks: { color: '#94a3b8' } }, y: { ticks: { color: '#94a3b8' } } } }
+      });
+
+      const rewards = modelData.training_rewards;
+      new Chart(document.getElementById('rewardChart'), {
+        type: 'line',
+        data: {
+          labels: rewards.map((_, i) => i + 1),
+          datasets: [{ label: 'Episode Reward', data: rewards, borderColor: '#38bdf8', pointRadius: 0, borderWidth: 1.5 }]
+        },
+        options: { plugins: { legend: { labels: { color: '#f1f5f9' } } }, scales: { x: { ticks: { color: '#94a3b8' } }, y: { ticks: { color: '#94a3b8' } } } }
+      });
+    }
+
+    async function runSimulation() {
+      const btn = document.getElementById('run-sim-btn');
+      btn.disabled = true;
+      const ew = Number(document.getElementById('ew-slider').value);
+      const ns = Number(document.getElementById('ns-slider').value);
+      const hour = Number(document.getElementById('preset-select').value.split(',')[0]);
+
+      const res = await fetch('/api/simulate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ew_volume: ew, ns_volume: ns, hour, seed: 42 })
+      });
+      const data = await res.json();
+      btn.disabled = false;
+
+      document.getElementById('sim-ai-wait').textContent = data.ai.avg_wait_sec + ' s/veh';
+      document.getElementById('sim-fix-wait').textContent = data.fixed.avg_wait_sec + ' s/veh';
+      document.getElementById('sim-ai-max').textContent = data.ai.max_queue + ' veh';
+      document.getElementById('sim-fix-max').textContent = data.fixed.max_queue + ' veh';
+      document.getElementById('sim-imp').textContent = '+' + pct(data.fixed.avg_wait_sec, data.ai.avg_wait_sec);
+
+      const labels = data.ai.timeline.map(p => Math.round(p.sec / 60) + 'm');
+      const aiQ = data.ai.timeline.map(p => p.q_ew + p.q_ns);
+      const fixQ = data.fixed.timeline.map(p => p.q_ew + p.q_ns);
+
+      if (liveChart) liveChart.destroy();
+      liveChart = new Chart(document.getElementById('liveChart'), {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [
+            { label: 'Fixed-Timing Total Queue', data: fixQ, borderColor: '#f97316', pointRadius: 0 },
+            { label: 'AI Agent Total Queue', data: aiQ, borderColor: '#22c55e', pointRadius: 0 }
+          ]
+        },
+        options: {
+          animation: false,
+          plugins: { legend: { labels: { color: '#f1f5f9' } } },
+          scales: { x: { ticks: { color: '#94a3b8' } }, y: { ticks: { color: '#94a3b8' }, title: { display: true, text: 'Vehicles in Queue', color: '#94a3b8' } } }
+        }
+      });
+
+      if (animTimer) clearInterval(animTimer);
+      let idx = 0;
+      const tl = data.ai.timeline;
+      animTimer = setInterval(() => {
+        if (idx >= tl.length) { clearInterval(animTimer); return; }
+        const pt = tl[idx++];
+        document.getElementById('sim-time').textContent = `${pt.sec} s / 3600 s`;
+        document.getElementById('live-q-ew').textContent = pt.q_ew;
+        document.getElementById('live-q-ns').textContent = pt.q_ns;
+        const ewLight = document.getElementById('light-ew');
+        const nsLight = document.getElementById('light-ns');
+        if (pt.phase === 0) {
+          ewLight.style.background = pt.switched ? '#eab308' : '#22c55e';
+          ewLight.style.boxShadow = '0 0 12px #22c55e';
+          nsLight.style.background = '#ef4444';
+          nsLight.style.boxShadow = 'none';
+        } else {
+          nsLight.style.background = pt.switched ? '#eab308' : '#22c55e';
+          nsLight.style.boxShadow = '0 0 12px #22c55e';
+          ewLight.style.background = '#ef4444';
+          ewLight.style.boxShadow = 'none';
+        }
+      }, 60);
+    }
+
+    document.getElementById('ew-slider').addEventListener('input', e => {
+      document.getElementById('ew-val').textContent = e.target.value;
+    });
+    document.getElementById('ns-slider').addEventListener('input', e => {
+      document.getElementById('ns-val').textContent = e.target.value;
+    });
+    document.getElementById('preset-select').addEventListener('change', e => {
+      const [, vol] = e.target.value.split(',').map(Number);
+      document.getElementById('ew-slider').value = vol;
+      document.getElementById('ew-val').textContent = vol;
+      const ns = Math.round(vol * 0.4);
+      document.getElementById('ns-slider').value = ns;
+      document.getElementById('ns-val').textContent = ns;
+    });
+    document.getElementById('run-sim-btn').addEventListener('click', runSimulation);
+
+    init();
+  </script>
+</body>
+</html>
